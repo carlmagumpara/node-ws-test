@@ -10,7 +10,6 @@ var userDisconnectTimeout = 8000 // 8 seconds
 var callTimeouts = []
 var callWaiting = 30000 // 30 seconds
 var server = http.createServer(app)
-var user_connection = null;
 server.listen(port)
 app.use(express.static(__dirname + "/"))
 console.log("http server listening on %d", port)
@@ -33,9 +32,7 @@ wsServer.on('request', function(request) {
             clearTimeout(disconnectTimeouts['user_' + data.user_id])
             delete disconnectTimeouts['user_' + data.user_id]
           }
-          user_connection = [connection, data.user_id]
-          connections.push(user_connection)
-          request['user_connection'] = user_connection
+          request['user_connection'] = connections.push([connection, data.user_id]) -1
           request['user_id'] = data.user_id
           break
         case 'calling':
@@ -114,7 +111,6 @@ wsServer.on('request', function(request) {
 
   connection.on('close', function(connection) {
     connections.splice(request['user_connection'], 1)
-    user_connection = null;
     disconnectTimeouts['user_' + request['user_id']] = setTimeout(function() {
       delete disconnectTimeouts['user_' + request['user_id']]
       var user_id = users.indexOf(request['user_id'])
