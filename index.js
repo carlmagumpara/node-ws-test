@@ -9,6 +9,7 @@ var disconnectTimeouts = []
 var userDisconnectTimeout = 8000 // 8 seconds
 var callTimeouts = []
 var callWaiting = 30000 // 30 seconds
+var busyUsers = []
 var server = http.createServer(app)
 server.listen(port)
 app.use(express.static(__dirname + "/"))
@@ -42,35 +43,46 @@ wsServer.on('request', function(request) {
             var json = JSON.stringify({ type:'user-is-offline', message: 'User is offline' })
             connection.sendUTF(json)
           } else {
-            
-            console.log('['+ new Date().toLocaleString() +'] Calling: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
-            for (var i = 0; i < connections.length; i++) {
-              if (connections[i][1] == data.callee_id) {
-                var json = JSON.stringify({ type:'calling', caller_name: data.caller_name, caller_id: data.caller_id })
-                connections[i][0].sendUTF(json)
-              }
-            }
-            var json = JSON.stringify({ type:'ringing', callee_name: data.callee_name, callee_id: data.callee_id })
-            connection.sendUTF(json)
-            callTimeouts['user_' + data.caller_id] =  setTimeout(function(){
-              console.log('['+ new Date().toLocaleString() +'] Not Answered: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
+            var user_status = busyUsers.indexOf(data.callee_id)
+            if (user_status === -1) {
+              busyUsers.push(data.callee_id)
+              busyUsers.push(data.caller_id)
+              console.log(busyUsers)
+              console.log('['+ new Date().toLocaleString() +'] Calling: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
               for (var i = 0; i < connections.length; i++) {
                 if (connections[i][1] == data.callee_id) {
-                  var json = JSON.stringify({ type:'missed-call', message: 'You missed a call from ' + data.caller_name + '.'  })
+                  var json = JSON.stringify({ type:'calling', caller_name: data.caller_name, caller_id: data.caller_id })
                   connections[i][0].sendUTF(json)
                 }
               }
-              var json = JSON.stringify({ type:'not-answered', message: data.callee_name + ' not answered.' })
+              var json = JSON.stringify({ type:'ringing', callee_name: data.callee_name, callee_id: data.callee_id })
               connection.sendUTF(json)
-              clearTimeout(callTimeouts['user_' + data.caller_id])
-              delete callTimeouts['user_' + data.caller_id]
-            }, callWaiting)
+              callTimeouts['user_' + data.caller_id] =  setTimeout(function(){
+                console.log('['+ new Date().toLocaleString() +'] Not Answered: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
+                removeFromBusyUsers(data.callee_id, data.caller_id)
+                for (var i = 0; i < connections.length; i++) {
+                  if (connections[i][1] == data.callee_id) {
+                    var json = JSON.stringify({ type:'missed-call', message: 'You missed a call from ' + data.caller_name + '.'  })
+                    connections[i][0].sendUTF(json)
+                  }
+                }
+                var json = JSON.stringify({ type:'not-answered', message: data.callee_name + ' not answered.' })
+                connection.sendUTF(json)
+                clearTimeout(callTimeouts['user_' + data.caller_id])
+                delete callTimeouts['user_' + data.caller_id]
+              }, callWaiting)
+            } else {
+              console.log('['+ new Date().toLocaleString() +'] User Busy: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
+              var json = JSON.stringify({ type:'user-busy', message: 'User is busy' })
+              connection.sendUTF(json)
+            }
           }
           break
         case 'accepted':   
           console.log('['+ new Date().toLocaleString() +'] Accepted: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
           clearTimeout(callTimeouts['user_' + data.caller_id])
           delete callTimeouts['user_' + data.caller_id]
+          removeFromBusyUsers(data.callee_id, data.caller_id)
           for (var i = 0; i < connections.length; i++) {
             if (connections[i][1] == data.caller_id) {
               var json = JSON.stringify({ type:'accepted', callee_id: data.callee_id, callee_name: data.callee_name, caller_id: data.caller_id, caller_name: data.caller_name })
@@ -84,6 +96,7 @@ wsServer.on('request', function(request) {
           console.log('['+ new Date().toLocaleString() +'] Rejected: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
           clearTimeout(callTimeouts['user_' + data.caller_id])
           delete callTimeouts['user_' + data.caller_id]
+          removeFromBusyUsers(data.callee_id, data.caller_id)
           for (var i = 0; i < connections.length; i++) {
             if (connections[i][1] == data.caller_id) {
               var json = JSON.stringify({ type:'rejected', message: data.callee_name + ' rejected your call.' })
@@ -95,6 +108,7 @@ wsServer.on('request', function(request) {
           console.log('['+ new Date().toLocaleString() +'] Cancelled: Caller: ' +data.caller_id+ ' & Callee: '+ data.callee_id)
           clearTimeout(callTimeouts['user_' + data.caller_id])
           delete callTimeouts['user_' + data.caller_id]
+          removeFromBusyUsers(data.callee_id, data.caller_id)
           for (var i = 0; i < connections.length; i++) {
             if (connections[i][1] == data.callee_id) {
               var json = JSON.stringify({ type:'cancelled', message: data.caller_name + ' cancelled call.'   })
@@ -125,6 +139,14 @@ wsServer.on('request', function(request) {
     var json = JSON.stringify({ type:'subscribe', data: users })
     for (var i = 0; i < connections.length; i++) {
       connections[i][0].sendUTF(json)
+    }
+  }
+
+  function removeFromBusyUsers(user_1, user_2) {
+    var busyUser = [user_1, user_2]
+    for (var i = 0; i < busyUser.length; i++) {
+      var user = busyUsers.indexOf(busyUser[i])
+      busyUsers.splice(user, 1)
     }
   }
 
