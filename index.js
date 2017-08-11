@@ -117,7 +117,7 @@ wsServer.on('request', function(request) {
           }
           break
         default:
-          console.log('Server]: Opss... Something\'s wrong here.')
+          console.log('[Server]: Opss... Something\'s wrong here.')
       }
       updateActiveUsers()
     }
@@ -125,14 +125,22 @@ wsServer.on('request', function(request) {
 
   connection.on('close', function(connection) {
     connections.splice(request['user_connection'], 1)
-    disconnectTimeouts['user_' + request['user_id']] = setTimeout(function() {
-      delete disconnectTimeouts['user_' + request['user_id']]
-      var user_id = users.indexOf(request['user_id'])
-      users.splice(user_id, 1)
-      console.log('['+ new Date().toLocaleString() +'] Connection: 1 user disconnected')
-      console.log('['+ new Date().toLocaleString() +'] Connection: '+users.length+' total user(s) connected')
-      updateActiveUsers()
-    }, userDisconnectTimeout)
+    request['stillActive'] = false
+    for (var i = 0; i < connections.length; i++) {
+      if (connections[i][1] == request['user_id']) {
+        request['stillActive'] = true
+      }
+    }
+    if (request['stillActive'] === false) {
+      disconnectTimeouts['user_' + request['user_id']] = setTimeout(function() {
+        delete disconnectTimeouts['user_' + request['user_id']]
+        var user_id = users.indexOf(request['user_id'])
+        users.splice(user_id, 1)
+        console.log('['+ new Date().toLocaleString() +'] Connection: 1 user disconnected')
+        console.log('['+ new Date().toLocaleString() +'] Connection: '+users.length+' total user(s) connected')
+        updateActiveUsers()
+      }, userDisconnectTimeout)
+    }
   })
 
   function updateActiveUsers(){
